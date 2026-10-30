@@ -3652,6 +3652,15 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
           return@Factory dataSpec
         }
 
+        // Offline bypass for playerCache: the song was streamed before and is fully
+        // cached in the LRU playerCache — serve it directly without fetching a new
+        // stream URL, which would fail when there is no network connection.
+        if (isFullyPlayerCached && !isNetworkConnected.value) {
+          Timber.tag(TAG).d("Serving $mediaId from playerCache (offline)")
+          scope.launch(Dispatchers.IO) { recoverSong(mediaId, isOfflinePlayback = true) }
+          return@Factory dataSpec
+        }
+
         // If a cached stream exists, we only short-circuit if:
         // 1. It is already an addon stream, OR
         // 2. Addons are not active (so YouTube was expected)
