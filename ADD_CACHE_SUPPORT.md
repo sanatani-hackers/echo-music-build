@@ -169,14 +169,16 @@ val isPlayableOffline = isFullyInDownloadCache || isFullyInPlayerCache
 ```
 If `isPlayableOffline`, the dataSource returns `dataSpec` directly with a safe fallback URI so Media3 serves data straight from the cache without requiring a network call.
 
-### 3️⃣ UI Badging
-In song list items (e.g. `SongListItem`, `TrackItem`), query cache availability using `CacheUtil` or via the cached songs Flow in `CachePlaylistViewModel`, rendering an offline/cached badge next to song title/duration.
+### 3️⃣ UI Badging & Controls
+- In `SongListItem`, display `Icon.Cached()` (`R.drawable.cached`) when a song is cached in `playerCache` and not yet fully downloaded.
+- In `StorageSettings.kt`, provide dynamic ceiling management: an Unlimited toggle (`-1`) and a 100 MB to 10 GB slider that immediately adjusts `DynamicLruCacheEvictor` without restarting the playback service.
 
 ---
 
 ## 5. Execution Steps
 1. [x] Step 1: Update Architecture Documentation (`ADD_CACHE_SUPPORT.md`).
-2. [ ] Step 2: Implement `CacheUtil.kt` in `playback/`.
-3. [ ] Step 3: Update `MusicService.kt` offline resolution for `playerCache`.
-4. [ ] Step 4: UI integration (cached badge in song list items).
-5. [ ] Step 5: Clean build verification (`./gradlew :app:compileUniversalGmsDebugKotlin`).
+2. [x] Step 2: Implement `CacheUtil.kt` in `playback/`.
+3. [x] Step 3: Update `MusicService.kt` offline resolution for `playerCache`.
+4. [x] Step 4: UI integration (cached badge in song list items).
+5. [x] Step 5: Cache size limit controls (100 MB to 10 GB slider + Unlimited toggle in Storage Settings).
+6. [ ] Step 6: Clean build verification (`./gradlew :app:compileUniversalGmsDebugKotlin`).

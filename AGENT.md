@@ -369,3 +369,13 @@ Optional full-screen vertical swipe discovery (`echo.music.iad1tya.musicflow`, r
 ## Ambient Mode Canvas
 
 Ambient Mode keeps the existing album-art square and layers muted Canvas artwork inside that same clipped square. The normal album art remains underneath as the fallback; Canvas follows playback state and is non-interactive.
+
+## Offline Stream Cache & Storage Controls
+
+Echo Music provides an automated offline caching layer for all streamed music:
+- **Architecture:** Streams are cached to `playerCache` (`context.filesDir.resolve("exoplayer")`), managed dynamically by `DynamicLruCacheEvictor`. Media3 cache keys are standardized on `mediaId` rather than ephemeral YouTube stream URLs.
+- **Offline Playback:** In `MusicService.kt:createDataSourceFactory()`, if network is disconnected and a track is fully cached in `playerCache` (`cacheUtil.isInPlayerCache(mediaId, cachedLength)`), it bypasses network URL resolution and directly serves audio data from local cache spans.
+- **CacheUtil Helper:** `echo.music.iad1tya.playback.CacheUtil` provides singleton cache inspection (`isFullyCached`, `isInPlayerCache`, `getCachedBytes`) and runtime ceiling configuration (`setMaxCacheSize`).
+- **UI Cached Badges:** `SongListItem` displays `Icon.Cached()` (`R.drawable.cached`) whenever a track is cached in `playerCache` and not already marked as downloaded.
+- **Configurable Cache Ceiling:** In `StorageSettings.kt`, users can toggle "Unlimited cache" (`MaxSongCacheSizeKey = -1`, evictor ceiling = `Long.MAX_VALUE`) or adjust a 100 MB to 10 GB slider with live feedback. Adjustments immediately invoke `evictor.applyNow(playerCache)` through `cacheUtil.setMaxCacheSize()`.
+

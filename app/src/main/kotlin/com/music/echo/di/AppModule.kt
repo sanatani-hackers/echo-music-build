@@ -151,20 +151,29 @@ object AppModule {
     @ApplicationContext context: Context,
   ): DatabaseProvider = StandaloneDatabaseProvider(context)
 
+  @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+  @Singleton
+  @Provides
+  fun provideDynamicLruCacheEvictor(
+    @ApplicationContext context: Context,
+  ): com.music.echo.playback.DynamicLruCacheEvictor {
+    val cacheSize = context.dataStore[MaxSongCacheSizeKey] ?: 1024
+    val maxBytes = if (cacheSize == -1) Long.MAX_VALUE else cacheSize * 1024 * 1024L
+    return com.music.echo.playback.DynamicLruCacheEvictor(maxBytes)
+  }
+
+  @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
   @Singleton
   @Provides
   @PlayerCache
   fun providePlayerCache(
     @ApplicationContext context: Context,
     databaseProvider: DatabaseProvider,
+    evictor: com.music.echo.playback.DynamicLruCacheEvictor,
   ): SimpleCache {
-    val cacheSize = context.dataStore[MaxSongCacheSizeKey] ?: 1024
     return SimpleCache(
       context.filesDir.resolve("exoplayer"),
-      when (cacheSize) {
-        -1 -> NoOpCacheEvictor()
-        else -> com.music.echo.playback.DynamicLruCacheEvictor(cacheSize * 1024 * 1024L)
-      },
+      evictor,
       databaseProvider,
     )
   }

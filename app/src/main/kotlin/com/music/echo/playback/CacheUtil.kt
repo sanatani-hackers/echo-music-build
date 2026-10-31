@@ -29,6 +29,7 @@ constructor(
   @PlayerCache private val playerCache: SimpleCache,
   @DownloadCache private val downloadCache: SimpleCache,
   private val database: MusicDatabase,
+  private val evictor: com.music.echo.playback.DynamicLruCacheEvictor,
 ) {
 
   // ---------------------------------------------------------------------------
@@ -134,6 +135,17 @@ constructor(
    */
   fun removeFromPlayerCache(mediaId: String) {
     playerCache.removeResource(mediaId)
+  }
+
+  /**
+   * Dynamically adjusts the playerCache ceiling without restarting the player or cache.
+   * Pass -1 for unlimited ([Long.MAX_VALUE]).
+   */
+  @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+  fun setMaxCacheSize(sizeMb: Int) {
+    val maxBytes = if (sizeMb == -1) Long.MAX_VALUE else sizeMb * 1024 * 1024L
+    evictor.maxBytes = maxBytes
+    evictor.applyNow(playerCache)
   }
 
   // ---------------------------------------------------------------------------

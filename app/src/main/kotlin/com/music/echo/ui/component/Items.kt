@@ -394,6 +394,16 @@ fun SongListItem(
     if (showDownloadIcon) {
       val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
       Icon.Download(download?.state)
+      // Show cached badge only when the song is not already shown as fully downloaded,
+      // and it is present in the streaming playerCache.
+      if (download?.state != androidx.media3.exoplayer.offline.Download.STATE_COMPLETED) {
+        val cacheUtil = LocalPlayerConnection.current?.service?.cacheUtil
+        val formatContentLength = song.format?.contentLength ?: -1L
+        val isCached = remember(song.id, formatContentLength) {
+          cacheUtil?.isInPlayerCache(song.id, formatContentLength) == true
+        }
+        if (isCached) Icon.Cached()
+      }
     }
   },
   isSelected: Boolean = false,
@@ -1752,6 +1762,21 @@ object Icon {
       painter = painterResource(R.drawable.explicit),
       contentDescription = null,
       tint = tint,
+      modifier = Modifier.size(18.dp).padding(end = 2.dp)
+    )
+  }
+
+  /**
+   * Badge shown when a song is present in the LRU playerCache (streamed but not explicitly
+   * downloaded). Hidden if the song already shows the Download (offline) badge to avoid
+   * redundancy.
+   */
+  @Composable
+  fun Cached() {
+    Icon(
+      painter = painterResource(R.drawable.cached),
+      contentDescription = null,
+      tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
       modifier = Modifier.size(18.dp).padding(end = 2.dp)
     )
   }

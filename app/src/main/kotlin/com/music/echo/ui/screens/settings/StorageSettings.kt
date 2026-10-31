@@ -5,12 +5,16 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +22,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -25,6 +31,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +43,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import kotlin.math.roundToInt
 import androidx.navigation.NavController
 import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
@@ -80,8 +88,10 @@ fun StorageSettings(
   val context = LocalContext.current
   val database = LocalDatabase.current
   val imageDiskCache = context.imageLoader.diskCache ?: return
-  val playerCache = LocalPlayerConnection.current?.service?.playerCache ?: return
-  val downloadCache = LocalPlayerConnection.current?.service?.downloadCache ?: return
+  val playerConnection = LocalPlayerConnection.current
+  val playerCache = playerConnection?.service?.playerCache ?: return
+  val downloadCache = playerConnection.service.downloadCache
+  val cacheUtil = playerConnection.service.cacheUtil
 
   val coroutineScope = rememberCoroutineScope()
   val songCacheString = stringResource(R.string.song_cache).lowercase()
@@ -90,6 +100,11 @@ fun StorageSettings(
     rememberPreference(key = MaxImageCacheSizeKey, defaultValue = 512)
   val (maxSongCacheSize, onMaxSongCacheSizeChange) =
     rememberPreference(key = MaxSongCacheSizeKey, defaultValue = 1024)
+
+  val isUnlimited = maxSongCacheSize == -1
+  var lastLimitedSize by remember {
+    mutableIntStateOf(if (maxSongCacheSize > 0) maxSongCacheSize else 1024)
+  }
   val (exportDirectoryUri, onExportDirectoryUriChange) =
     rememberPreference(
       key = ExportDirectoryUriKey,
@@ -164,7 +179,8 @@ fun StorageSettings(
   val playerCacheProgress by
     animateFloatAsState(
       targetValue =
-        (playerCacheSize.toFloat() / (maxSongCacheSize * 1024 * 1024L)).coerceIn(0f, 1f),
+        if (maxSongCacheSize <= 0) 0f
+        else (playerCacheSize.toFloat() / (maxSongCacheSize * 1024 * 1024L)).coerceIn(0f, 1f),
       label = "playerCacheProgress",
     )
 
@@ -175,6 +191,7 @@ fun StorageSettings(
     }
   }
   LaunchedEffect(maxSongCacheSize) {
+    cacheUtil.setMaxCacheSize(maxSongCacheSize)
     if (maxSongCacheSize == 0) {
       coroutineScope.launch(Dispatchers.IO) {
         playerCache.keys.forEach { key -> playerCache.removeResource(key) }
@@ -366,15 +383,85 @@ fun StorageSettings(
       scrollState = scrollState,
       title = stringResource(R.string.song_cache),
       items =
-        listOf(
-          Material3SettingsItem(
-            isHighlighted = (highlightKey == stringResource(R.string.clear_song_cache)),
-            icon = painterResource(R.drawable.cached),
-            title = { Text(stringResource(R.string.clear_song_cache)) },
-            description = { Text("${formatFileSize(playerCacheSize)} used") },
-            onClick = { clearCacheDialog = true }
+        buildList {
+          add(
+            Material3SettingsItem(
+              isHighlighted = (highlightKey == stringResource(R.string.clear_song_cache)),
+              icon = painterResource(R.drawable.cached),
+              title = { Text(stringResource(R.string.clear_song_cache)) },
+              description = {
+                Text(
+                  if (isUnlimited) {
+                    "${formatFileSize(playerCacheSize)} used (${stringResource(R.string.unlimited)})"
+                  } else {
+                    "${formatFileSize(playerCacheSize)} / ${formatFileSize(maxSongCacheSize * 1024 * 1024L)}"
+                  }
+                )
+              },
+              onClick = { clearCacheDialog = true }
+            )
           )
-        )
+          add(
+            Material3SettingsItem(
+              icon = painterResource(R.drawable.storage),
+              title = { Text(stringResource(R.string.unlimited)) },
+              description = { Text("Allow song cache to grow without limit") },
+              trailingContent = {
+                Switch(
+                  checked = isUnlimited,
+                  onCheckedChange = { checked ->
+                    if (checked) {
+                      if (maxSongCacheSize > 0) lastLimitedSize = maxSongCacheSize
+                      onMaxSongCacheSizeChange(-1)
+                    } else {
+                      onMaxSongCacheSizeChange(lastLimitedSize)
+                    }
+                  }
+                )
+              },
+              onClick = {
+                if (isUnlimited) {
+                  onMaxSongCacheSizeChange(lastLimitedSize)
+                } else {
+                  if (maxSongCacheSize > 0) lastLimitedSize = maxSongCacheSize
+                  onMaxSongCacheSizeChange(-1)
+                }
+              }
+            )
+          )
+          if (!isUnlimited) {
+            add(
+              Material3SettingsItem(
+                icon = painterResource(R.drawable.sliders),
+                title = { Text(stringResource(R.string.max_song_cache_size)) },
+                description = {
+                  Slider(
+                    value = maxSongCacheSize.coerceIn(100, 10240).toFloat(),
+                    onValueChange = {
+                      val step = 100
+                      val rounded = ((it / step).roundToInt() * step).coerceIn(100, 10240)
+                      lastLimitedSize = rounded
+                      onMaxSongCacheSizeChange(rounded)
+                    },
+                    valueRange = 100f..10240f,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                  )
+                },
+                trailingContent = {
+                  Text(
+                    text = if (maxSongCacheSize < 1024) {
+                      "$maxSongCacheSize MB"
+                    } else {
+                      String.format(java.util.Locale.ROOT, "%.1f GB", maxSongCacheSize / 1024f)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                  )
+                }
+              )
+            )
+          }
+        }
     )
 
     Spacer(modifier = Modifier.height(16.dp))
